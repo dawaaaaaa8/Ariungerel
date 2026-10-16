@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -55,6 +55,8 @@ export default function Home() {
   const recTimerRef = useRef(null)
   const pressRef = useRef(null)
   const lastTypingRef = useRef(0)
+  const firstLoadRef = useRef(true)
+  const stickRef = useRef(true)
 
   const me = session ? (session.user.email || '').split('@')[0] : ''
 
@@ -98,7 +100,7 @@ export default function Home() {
 
   /* --- Messages + reads + reactions --- */
   useEffect(() => {
-    if (!session) { setMsgs([]); return }
+    if (!session) { setMsgs([]); firstLoadRef.current = true; return }
     let ch, chR, chRd
     const addMsg = m => setMsgs(p => (p.some(x => x.id === m.id) ? p : [...p, m]))
 
@@ -150,7 +152,6 @@ export default function Home() {
               [mid]: (prev[mid] || []).map(x => x.id === p.new.id ? p.new : x),
             }))
           } else if (p.eventType === 'DELETE') {
-            // DELETE дээр зөвхөн id найдвартай ирдэг
             const id = p.old?.id
             if (!id) return
             setReactions(prev => {
@@ -202,11 +203,25 @@ export default function Home() {
   }, [])
 
   /* --- Auto-scroll --- */
-  useEffect(() => {
+  const scrollBottom = useCallback((smooth = false) => {
     const el = listRef.current
     if (!el) return
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
-    if (nearBottom) el.scrollTop = el.scrollHeight
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }, [])
+
+  useLayoutEffect(() => {
+    const el = listRef.current
+    if (!el || !msgs.length) return
+    // Эхний ачаалал: шууд хамгийн сүүлийн мессеж дээр, animation-гүй
+    if (firstLoadRef.current) {
+      el.scrollTop = el.scrollHeight
+      firstLoadRef.current = false
+      stickRef.current = true
+      return
+    }
+    // Дараагийн мессеж: доод талд байсан эсвэл өөрөө илгээсэн бол доошилно
+    const last = msgs[msgs.length - 1]
+    if (stickRef.current || last.sender === me) scrollBottom(true)
   }, [msgs])
 
   /* --- Read receipts --- */
@@ -221,7 +236,7 @@ export default function Home() {
     )
   }, [msgs.length, session?.user?.id])
 
-  /* --- Reaction popup: гадна дарахад / Esc / scroll үед хаах --- */
+  /* --- Reaction popup: гадна дарахад / Esc үед хаах --- */
   useEffect(() => {
     if (!picker) return
     const onDown = (e) => { if (!e.target.closest?.('.rx-pop')) setPicker(null) }
@@ -380,7 +395,6 @@ export default function Home() {
       })
     } catch (x) {
       setErr(x.message || 'Reaction алдаа')
-      // алдаа гарвал серверээс дахин унших
       const { data } = await sb.from('reactions').select('*').eq('message_id', msgId)
       setReactions(p => ({ ...p, [msgId]: data || [] }))
     }
@@ -475,7 +489,16 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="list" ref={listRef} aria-live="polite" onScroll={() => picker && setPicker(null)}>
+      <div
+        className="list"
+        ref={listRef}
+        aria-live="polite"
+        onScroll={e => {
+          const el = e.currentTarget
+          stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+          if (picker) setPicker(null)
+        }}
+      >
         {msgs.length === 0 && (
           <div className="empty">
             <div className="empty-icon">💭</div>
@@ -528,10 +551,24 @@ export default function Home() {
 
                     {m.kind === 'image' && (
                       <a href={m.media_url} target="_blank" rel="noreferrer">
-                        <img src={m.media_url} alt="зураг" loading="lazy" draggable={false} />
+                        <img
+                          src={m.media_url}
+                          alt="зураг"
+                          loading="lazy"
+                          draggable={false}
+                          onLoad={() => stickRef.current && scrollBottom()}
+                        />
                       </a>
                     )}
-                    {m.kind === 'video' && <video src={m.media_url} controls playsInline preload="metadata" />}
+                    {m.kind === 'video' && (
+                      <video
+                        src={m.media_url}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        onLoadedMetadata={() => stickRef.current && scrollBottom()}
+                      />
+                    )}
                     {m.kind === 'voice' && <audio src={m.media_url} controls preload="metadata" className="voice-audio" />}
                     {m.kind === 'text' && <span className="body">{m.body}</span>}
 
