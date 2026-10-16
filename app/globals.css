@@ -14,6 +14,7 @@
   --green: #4cd08a;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 20px 40px -12px rgba(29, 78, 137, 0.25);
+  --mine-bg: rgba(29, 78, 137, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,6 +26,7 @@
     --muted: #94a3b8;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 20px 40px -12px rgba(0, 0, 0, 0.6);
+    --mine-bg: rgba(127, 176, 236, 0.22);
   }
 }
 
@@ -140,18 +142,9 @@ button {
   touch-action: manipulation;
 }
 
-button:hover:not(:disabled) {
-  background: var(--blue-dark);
-}
-
-button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+button:hover:not(:disabled) { background: var(--blue-dark); }
+button:active:not(:disabled) { transform: scale(0.97); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 :focus-visible {
   outline: 3px solid #7fb0ec;
@@ -337,15 +330,12 @@ button:disabled {
   max-width: 100%;
 }
 
-.m-row.me {
-  flex-direction: row-reverse;
-}
-
-.m-row:not(.me) {
-  margin-top: 12px;
-}
-
+.m-row.me { flex-direction: row-reverse; }
+.m-row:not(.me) { margin-top: 12px; }
 .m-row:first-child { margin-top: 0; }
+
+/* reaction-тэй мессежийн доор зай үлдээнэ */
+.m-row.has-rx { margin-bottom: 10px; }
 
 .m-avatar {
   width: 30px;
@@ -374,17 +364,30 @@ button:disabled {
   border: 2px solid var(--sand);
 }
 
-.presence.on {
-  background: var(--green);
+.presence.on { background: var(--green); }
+.avatar .presence { border-color: var(--blue); }
+
+/* Bubble + reaction багана */
+.m-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 80%;
+  min-width: 0;
 }
 
-.avatar .presence {
-  border-color: var(--blue);
+.m-row.me .m-col { align-items: flex-end; }
+
+.m-line {
+  position: relative;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
 }
 
 /* ============ MESSAGE BUBBLE ============ */
 .m {
-  max-width: 78%;
+  max-width: 100%;
   padding: 8px 12px;
   border-radius: 16px 16px 16px 4px;
   line-height: 1.4;
@@ -393,17 +396,20 @@ button:disabled {
   white-space: pre-wrap;
   background: var(--theirs);
   border: 1px solid var(--line);
-  align-self: flex-start;
   box-shadow: var(--shadow);
   position: relative;
   min-width: 0;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
+
+.m .body { user-select: text; -webkit-user-select: text; }
 
 .m.me {
   background: var(--blue);
   color: #fff;
   border-color: transparent;
-  align-self: flex-end;
   border-radius: 16px 16px 4px 16px;
 }
 
@@ -446,14 +452,10 @@ button:disabled {
   opacity: 1;
 }
 
-.m.me .tick.read {
-  color: #7fe0b0;
-}
+.m.me .tick.read { color: #7fe0b0; }
 
 /* ============ MEDIA ============ */
-.m.media {
-  padding: 5px;
-}
+.m.media { padding: 5px; }
 
 .m img,
 .m video {
@@ -529,225 +531,183 @@ button:disabled {
   max-width: 240px;
 }
 
-/* ============ REACTIONS ============ */
-.reactions {
+/* ============ SIDE ACTIONS (desktop hover) ============ */
+.side-actions {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%);
+  margin-left: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.m-row.me .side-actions {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 6px;
+  flex-direction: row-reverse;
+}
+
+.m-line:hover .side-actions,
+.side-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.side-actions .side-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 400;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.side-actions .side-btn:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--ink);
+}
+
+@media (hover: none) {
+  .side-actions { display: none; }
+}
+
+/* ============ REACTION PILLS (bubble-ийн доор давхцана) ============ */
+.rx-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
+  margin: -9px 8px 0;
+  position: relative;
+  z-index: 2;
 }
 
-.reaction {
-  background: rgba(0, 0, 0, 0.06);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 2px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  width: auto;
-  height: auto;
-  color: var(--ink);
-  box-shadow: none;
-  font-weight: 400;
-  line-height: 1.4;
-}
-
-.reaction:hover {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.reaction.mine {
-  background: rgba(29, 78, 137, 0.15);
-  border-color: var(--blue);
-  color: var(--blue);
-}
-
-.m.me .reaction {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.25);
-  color: #fff;
-}
-
-.m.me .reaction.mine {
-  background: rgba(255, 255, 255, 0.35);
-  border-color: #fff;
-}
-
-/* ============ MESSAGE ACTIONS ============ */
-
-/* ============ MESSAGE ACTIONS ============ */
-.m-actions {
-  display: flex;
+.rx-pill {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-top: 6px;
-  padding-top: 4px;
-  border-top: 1px dashed rgba(0, 0, 0, 0.08);
-  opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-  transition: opacity 0.15s, max-height 0.25s;
-}
-
-.m.me .m-actions {
-  border-top-color: rgba(255, 255, 255, 0.15);
-}
-
-.m:hover .m-actions,
-.m:focus-within .m-actions {
-  opacity: 1;
-  max-height: 60px;
-}
-
-/* Бүх action товч */
-.act-btn,
-.m-actions > button {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.06);
+  gap: 3px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--theirs);
   color: var(--ink);
   border: 1px solid var(--line);
-  font-size: 15px;
-  box-shadow: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: transform 0.12s, background 0.12s, border-color 0.12s;
-  font-weight: 400;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
+  animation: pill-in 0.22s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
-.act-btn:hover,
-.m-actions > button:hover {
-  background: var(--blue);
-  color: #fff;
-  border-color: var(--blue);
-  transform: scale(1.1);
+.rx-pill .rx-e { font-size: 14px; }
+.rx-pill .rx-n { font-size: 12px; opacity: 0.8; }
+
+.rx-pill:hover:not(:disabled) {
+  background: var(--theirs);
+  transform: scale(1.08);
 }
 
-.m.me .act-btn,
-.m.me .m-actions > button {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.25);
+.rx-pill.mine {
+  background: var(--mine-bg);
+  border-color: var(--blue-light);
 }
 
-.m.me .act-btn:hover,
-.m.me .m-actions > button:hover {
-  background: rgba(255, 255, 255, 0.35);
+.rx-pill.mine:hover:not(:disabled) { background: var(--mine-bg); }
+
+@keyframes pill-in {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
 }
 
-/* 💙 Зүрх — тусгай highlight */
-.act-btn.heart {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.3);
-  font-size: 16px;
-}
-
-.act-btn.heart:hover {
-  background: linear-gradient(135deg, #3b82f6, #1d4e89);
-  border-color: #3b82f6;
-  transform: scale(1.15);
-}
-
-.m.me .act-btn.heart {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.35);
-}
-
-.m.me .act-btn.heart:hover {
-  background: rgba(255, 255, 255, 0.45);
-}
-
-/* Reply товч */
-.act-btn.reply {
-  font-size: 16px;
-}
-
-/* Emoji picker (мессеж дотор) */
-.emoji-pop {
+/* ============ REACTION POPUP (Messenger маяг) ============ */
+.rx-pop {
+  position: fixed;
+  z-index: 50;
   display: flex;
-  gap: 2px;
-  background: transparent;
-  border: none;
-  padding: 0;
-  box-shadow: none;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  transform-origin: bottom left;
+  animation: pop-in 0.18s cubic-bezier(0.3, 1.4, 0.5, 1);
 }
 
-.emoji-pop button {
-  width: 30px;
-  height: 30px;
+.rx-pop.me { align-items: flex-end; transform-origin: bottom right; }
+.rx-pop.below { transform-origin: top left; }
+.rx-pop.below.me { transform-origin: top right; }
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.6) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+
+.rx-emojis {
+  display: flex;
+  padding: 4px 6px;
+  background: var(--theirs);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg), 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+.rx-emojis button {
+  width: 40px;
+  height: 40px;
   padding: 0;
-  background: transparent;
-  border: none;
-  box-shadow: none;
   border-radius: 50%;
-  font-size: 16px;
-  cursor: pointer;
+  background: transparent;
+  color: inherit;
+  font-size: 24px;
+  font-weight: 400;
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.12s, background 0.12s;
+  transition: transform 0.15s cubic-bezier(0.3, 1.6, 0.5, 1);
+  animation: emoji-in 0.28s cubic-bezier(0.3, 1.6, 0.5, 1) backwards;
+  animation-delay: calc(var(--i) * 25ms);
 }
 
-.emoji-pop button:hover {
-  background: rgba(0, 0, 0, 0.08);
-  transform: scale(1.2);
-}
-
-.m.me .emoji-pop button:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Mobile — үргэлж харагдуулах */
-@media (hover: none) {
-  .m-actions {
-    opacity: 1;
-    max-height: 60px;
-  }
-}
-
-.emoji-pop button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
+.rx-emojis button:hover:not(:disabled) {
   background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 50%;
-  font-size: 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transform: scale(1.4) translateY(-5px);
 }
 
-.emoji-pop button:hover {
-  background: rgba(0, 0, 0, 0.08);
-  transform: scale(1.15);
+.rx-emojis button:active:not(:disabled) { transform: scale(1.15); }
+
+.rx-emojis button.sel,
+.rx-emojis button.sel:hover:not(:disabled) {
+  background: var(--mine-bg);
 }
 
-/* Mobile: always show actions */
-@media (hover: none) {
-  .m-actions {
-    position: static;
-    transform: none;
-    opacity: 1;
-    pointer-events: auto;
-    margin-top: 4px;
-    justify-content: flex-end;
-  }
-  .m:not(.me) .m-actions,
-  .m.me .m-actions {
-    right: auto;
-    left: auto;
-    margin-right: 0;
-    margin-left: 0;
-  }
+@keyframes emoji-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.5); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.rx-menu button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--theirs);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rx-menu button:hover:not(:disabled) {
+  background: var(--sand);
 }
 
 /* ============ TYPING ============ */
@@ -763,10 +723,7 @@ button:disabled {
   flex-shrink: 0;
 }
 
-.typing-dots {
-  display: inline-flex;
-  gap: 2px;
-}
+.typing-dots { display: inline-flex; gap: 2px; }
 
 .typing-dots i {
   width: 4px;
@@ -822,9 +779,10 @@ button:disabled {
   box-shadow: none;
 }
 
-.notice-close:hover {
+.notice-close:hover:not(:disabled) {
   opacity: 1;
   background: rgba(0, 0, 0, 0.05);
+  color: inherit;
 }
 
 /* ============ REPLY BAR ============ */
@@ -876,11 +834,11 @@ button:disabled {
   flex-shrink: 0;
 }
 
-.reply-bar button:hover {
+.reply-bar button:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.12);
 }
 
-/* ============ EMOJI PICKER ============ */
+/* ============ EMOJI PICKER (input) ============ */
 .emoji-picker {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -908,7 +866,7 @@ button:disabled {
   justify-content: center;
 }
 
-.emoji-picker button:hover {
+.emoji-picker button:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.06);
   transform: scale(1.1);
 }
@@ -958,9 +916,7 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
-.bar .clip:hover:not(:disabled) {
-  background: var(--line);
-}
+.bar .clip:hover:not(:disabled) { background: var(--line); }
 
 .bar .mic {
   background: var(--blue);
@@ -968,9 +924,7 @@ button:disabled {
   border: none;
 }
 
-.bar .mic:hover:not(:disabled) {
-  background: var(--blue-dark);
-}
+.bar .mic:hover:not(:disabled) { background: var(--blue-dark); }
 
 .bar .send {
   border-radius: 22px;
@@ -983,9 +937,7 @@ button:disabled {
   color: #fff;
 }
 
-.bar .send:hover:not(:disabled) {
-  background: var(--blue-dark);
-}
+.bar .send:hover:not(:disabled) { background: var(--blue-dark); }
 
 /* ============ RECORDING UI ============ */
 .recording {
@@ -1040,18 +992,14 @@ button:disabled {
   color: var(--ink);
 }
 
-.rec-cancel:hover {
-  background: rgba(0, 0, 0, 0.12);
-}
+.rec-cancel:hover:not(:disabled) { background: rgba(0, 0, 0, 0.12); }
 
 .rec-send {
   background: var(--blue);
   color: #fff;
 }
 
-.rec-send:hover {
-  background: var(--blue-dark);
-}
+.rec-send:hover:not(:disabled) { background: var(--blue-dark); }
 
 /* ============ RESPONSIVE ============ */
 @media (max-width: 640px) {
@@ -1092,8 +1040,9 @@ button:disabled {
     gap: 3px;
   }
 
+  .m-col { max-width: 84%; }
+
   .m {
-    max-width: 82%;
     padding: 7px 11px;
     font-size: 15px;
   }
@@ -1101,9 +1050,7 @@ button:disabled {
   .m .body { font-size: 15px; }
 
   .m img,
-  .m video {
-    max-height: 260px;
-  }
+  .m video { max-height: 260px; }
 
   .m-avatar {
     width: 26px;
@@ -1113,13 +1060,9 @@ button:disabled {
 
   .quote span { max-width: 180px; }
 
-  .emoji-picker {
-    grid-template-columns: repeat(6, 1fr);
-  }
+  .emoji-picker { grid-template-columns: repeat(6, 1fr); }
 
-  .voice-audio {
-    width: 200px;
-  }
+  .voice-audio { width: 200px; }
 
   .bar {
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
@@ -1148,7 +1091,7 @@ button:disabled {
 }
 
 @media (max-width: 380px) {
-  .m { max-width: 86%; }
+  .m-col { max-width: 88%; }
 
   .bar .clip,
   .bar .mic {

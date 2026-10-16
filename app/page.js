@@ -4,9 +4,9 @@ import { createClient } from '@supabase/supabase-js'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 const MAX = 50 * 1024 * 1024
-const VOICE_MAX = 10 * 1024 * 1024
 const ROOM = 'main'
-const EMOJIS = ['💙', '❤️', '👍', '😂', '😮', '😢', '🙏', '🔥']
+const REACTS = ['💙', '❤️', '😂', '😮', '😢', '🙏', '👍']
+const POP_W = 296
 
 async function post(url, data) {
   const { data: s } = await sb.auth.getSession()
@@ -33,10 +33,10 @@ export default function Home() {
   const [uname, setUname] = useState('')
   const [pw, setPw] = useState('')
   const [msgs, setMsgs] = useState([])
-  const [reads, setReads] = useState({})       // { message_id: count }
+  const [reads, setReads] = useState({})
   const [reactions, setReactions] = useState({}) // { message_id: [rows] }
-  const [profiles, setProfiles] = useState({}) // { user_id: {username, online, last_seen} }
-  const [typing, setTyping] = useState({})     // { username: timestamp }
+  const [profiles, setProfiles] = useState({})
+  const [typing, setTyping] = useState({})
   const [text, setText] = useState('')
   const [replyTo, setReplyTo] = useState(null)
   const [live, setLive] = useState(false)
@@ -46,13 +46,15 @@ export default function Home() {
   const [recording, setRecording] = useState(false)
   const [recSec, setRecSec] = useState(0)
   const [pushOn, setPushOn] = useState(false)
+  const [picker, setPicker] = useState(null) // { id, isMe, top, bottom, left, right }
 
   const listRef = useRef(null)
   const fileRef = useRef(null)
-  const channelRef = useRef(null)
   const typingChannelRef = useRef(null)
   const recorderRef = useRef(null)
   const recTimerRef = useRef(null)
+  const pressRef = useRef(null)
+  const lastTypingRef = useRef(0)
 
   const me = session ? (session.user.email || '').split('@')[0] : ''
 
@@ -79,9 +81,7 @@ export default function Home() {
       setProfiles(prev => ({ ...prev, ...map }))
     })
     ch.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await ch.track({ user_id: uid, username: me })
-      }
+      if (status === 'SUBSCRIBED') await ch.track({ user_id: uid, username: me })
     })
 
     const onBeforeUnload = () => {
@@ -136,19 +136,29 @@ export default function Home() {
 
       chR = sb.channel('reactions')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, p => {
-          const mid = p.new?.message_id || p.old?.message_id
-          if (!mid) return
-          setReactions(prev => {
-            const list = prev[mid] || []
-            if (p.eventType === 'INSERT') {
+          if (p.eventType === 'INSERT') {
+            const mid = p.new.message_id
+            setReactions(prev => {
+              const list = prev[mid] || []
               if (list.some(x => x.id === p.new.id)) return prev
               return { ...prev, [mid]: [...list, p.new] }
-            }
-            if (p.eventType === 'DELETE') {
-              return { ...prev, [mid]: list.filter(x => x.id !== p.old.id) }
-            }
-            return prev
-          })
+            })
+          } else if (p.eventType === 'UPDATE') {
+            const mid = p.new.message_id
+            setReactions(prev => ({
+              ...prev,
+              [mid]: (prev[mid] || []).map(x => x.id === p.new.id ? p.new : x),
+            }))
+          } else if (p.eventType === 'DELETE') {
+            // DELETE дээр зөвхөн id найдвартай ирдэг
+            const id = p.old?.id
+            if (!id) return
+            setReactions(prev => {
+              const next = {}
+              for (const k in prev) next[k] = prev[k].filter(x => x.id !== id)
+              return next
+            })
+          }
         })
         .subscribe()
 
@@ -199,26 +209,32 @@ export default function Home() {
     if (nearBottom) el.scrollTop = el.scrollHeight
   }, [msgs])
 
-  /* --- Read receipts: mark visible --- */
+  /* --- Read receipts --- */
   useEffect(() => {
     if (!session || !msgs.length) return
     const uid = session.user.id
-    const markRead = async () => {
-      const el = listRef.current
-      if (!el) return
-      const toMark = msgs
-        .filter(m => m.sender !== me)
-        .map(m => m.id)
-      if (!toMark.length) return
-      await sb.from('message_reads').upsert(
-        toMark.map(id => ({ message_id: id, user_id: uid })),
-        { onConflict: 'message_id,user_id', ignoreDuplicates: true }
-      )
-    }
-    markRead()
+    const toMark = msgs.filter(m => m.sender !== me).map(m => m.id)
+    if (!toMark.length) return
+    sb.from('message_reads').upsert(
+      toMark.map(id => ({ message_id: id, user_id: uid })),
+      { onConflict: 'message_id,user_id', ignoreDuplicates: true }
+    )
   }, [msgs.length, session?.user?.id])
 
-  /* --- Push subscribe --- */
+  /* --- Reaction popup: гадна дарахад / Esc / scroll үед хаах --- */
+  useEffect(() => {
+    if (!picker) return
+    const onDown = (e) => { if (!e.target.closest?.('.rx-pop')) setPicker(null) }
+    const onKey = (e) => { if (e.key === 'Escape') setPicker(null) }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [picker])
+
+  /* --- Push --- */
   const enablePush = useCallback(async () => {
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -264,9 +280,10 @@ export default function Home() {
     const body = text.trim()
     if (!body) return
     const rep = replyTo?.id || null
+    const prevReply = replyTo
     setText(''); setReplyTo(null)
     try { await post('/api/messages', { kind: 'text', body, reply_to: rep }) }
-    catch (x) { setText(body); setReplyTo(rep ? replyTo : null); setErr(x.message) }
+    catch (x) { setText(body); setReplyTo(prevReply); setErr(x.message) }
   }
 
   /* --- Send file --- */
@@ -274,8 +291,7 @@ export default function Home() {
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
-    const okTypes = /^(image|video)\//
-    if (!okTypes.test(f.type)) { setErr('Зөвхөн зураг эсвэл видео'); return }
+    if (!/^(image|video)\//.test(f.type)) { setErr('Зөвхөн зураг эсвэл видео'); return }
     if (f.size > MAX) { setErr('50MB-аас бага байх ёстой'); return }
     setBusy(true); setErr('')
     try {
@@ -293,7 +309,7 @@ export default function Home() {
     setBusy(false)
   }
 
-  /* --- Voice record --- */
+  /* --- Voice --- */
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -330,25 +346,63 @@ export default function Home() {
     recorderRef.current = null
     setRecording(false)
     if (rec && rec.state !== 'inactive') {
-      if (!send) rec.ondataavailable = null, rec.onstop = null
+      if (!send) { rec.ondataavailable = null; rec.onstop = null }
       rec.stop()
     }
   }
 
-  /* --- Reactions --- */
-  async function toggleReaction(msgId, emoji) {
+  /* ============ REACTIONS ============ */
+  // Нэг хүн нэг мессежид нэг reaction. Ижил emoji дахин дарвал арилна, өөр emoji бол солигдоно.
+  async function react(msgId, emoji) {
     const uid = session.user.id
-    const list = reactions[msgId] || []
-    const mine = list.find(r => r.user_id === uid && r.emoji === emoji)
-    if (mine) {
-      await sb.from('reactions').delete().eq('id', mine.id)
-    } else {
-      await sb.from('reactions').insert({ message_id: msgId, user_id: uid, sender: me, emoji })
+    const mine = (reactions[msgId] || []).find(r => r.user_id === uid)
+    setPicker(null)
+
+    const removeLocal = (id) => setReactions(p => ({
+      ...p, [msgId]: (p[msgId] || []).filter(x => x.id !== id),
+    }))
+
+    try {
+      if (mine) {
+        removeLocal(mine.id)
+        const { error } = await sb.from('reactions').delete().eq('id', mine.id)
+        if (error) throw error
+        if (mine.emoji === emoji) return
+      }
+      const { data, error } = await sb.from('reactions')
+        .insert({ message_id: msgId, user_id: uid, sender: me, emoji })
+        .select().single()
+      if (error) throw error
+      setReactions(p => {
+        const list = p[msgId] || []
+        if (list.some(x => x.id === data.id)) return p
+        return { ...p, [msgId]: [...list, data] }
+      })
+    } catch (x) {
+      setErr(x.message || 'Reaction алдаа')
+      // алдаа гарвал серверээс дахин унших
+      const { data } = await sb.from('reactions').select('*').eq('message_id', msgId)
+      setReactions(p => ({ ...p, [msgId]: data || [] }))
     }
   }
 
+  function openPicker(bubbleEl, m, isMe) {
+    if (!bubbleEl) return
+    const r = bubbleEl.getBoundingClientRect()
+    setPicker({ id: m.id, isMe, top: r.top, bottom: r.bottom, left: r.left, right: r.right })
+  }
+
+  function pressStart(e, m, isMe) {
+    const el = e.currentTarget
+    clearTimeout(pressRef.current)
+    pressRef.current = setTimeout(() => {
+      openPicker(el, m, isMe)
+      if (navigator.vibrate) navigator.vibrate(10)
+    }, 420)
+  }
+  function pressCancel() { clearTimeout(pressRef.current) }
+
   /* --- Typing broadcast --- */
-  const lastTypingRef = useRef(0)
   function onTextChange(v) {
     setText(v)
     const now = Date.now()
@@ -386,6 +440,18 @@ export default function Home() {
     )
   }
 
+  /* --- popup тооцоолол --- */
+  let popMsg = null, popMine = null, popStyle = null, popBelow = false
+  if (picker) {
+    popMsg = msgById(picker.id)
+    popMine = (reactions[picker.id] || []).find(r => r.user_id === session.user.id)
+    const left = Math.max(8, Math.min(picker.isMe ? picker.right - POP_W : picker.left, window.innerWidth - POP_W - 8))
+    popBelow = picker.top < 130
+    popStyle = popBelow
+      ? { left, top: picker.bottom + 8 }
+      : { left, bottom: window.innerHeight - picker.top + 8 }
+  }
+
   return (
     <div className="chat">
       <header className="top">
@@ -403,15 +469,13 @@ export default function Home() {
           </div>
         </div>
         <div className="top-actions">
-          {!pushOn && (
-            <button className="icon-btn" onClick={enablePush} title="Мэдэгдэл асаах">🔔</button>
-          )}
+          {!pushOn && <button className="icon-btn" onClick={enablePush} title="Мэдэгдэл асаах">🔔</button>}
           {pushOn && <span className="push-on" title="Мэдэгдэл асаалттай">🔔</span>}
           <button className="logout" onClick={() => sb.auth.signOut()}>Гарах</button>
         </div>
       </header>
 
-      <div className="list" ref={listRef} aria-live="polite">
+      <div className="list" ref={listRef} aria-live="polite" onScroll={() => picker && setPicker(null)}>
         {msgs.length === 0 && (
           <div className="empty">
             <div className="empty-icon">💭</div>
@@ -431,86 +495,94 @@ export default function Home() {
           const readCount = reads[m.id] || 0
           const senderProfile = Object.values(profiles).find(p => p.username === m.sender)
           const isOnline = senderProfile?.online || false
+          const myR = rxs.find(r => r.user_id === session.user.id)
 
           return (
-            <div key={m.id} className={'m-row' + (isMe ? ' me' : '')}>
+            <div key={m.id} className={'m-row' + (isMe ? ' me' : '') + (rxs.length ? ' has-rx' : '')}>
               {!isMe && (
                 <div className="m-avatar">
                   {m.sender.charAt(0).toUpperCase()}
                   {isOnline && <span className="presence on" />}
                 </div>
               )}
-              <div className={'m' + (isMe ? ' me' : '') + (m.kind !== 'text' ? ' media' : '')}>
-                {!isMe && showWho && <span className="who">{m.sender}</span>}
 
-                {quoted && (
-                  <div className="quote">
-                    <b>{quoted.sender}</b>
-                    <span>{quoted.kind === 'text' ? quoted.body?.slice(0, 80) : '📎 Хавсралт'}</span>
+              <div className="m-col">
+                <div className="m-line">
+                  <div
+                    className={'m' + (isMe ? ' me' : '') + (m.kind !== 'text' ? ' media' : '')}
+                    onTouchStart={e => pressStart(e, m, isMe)}
+                    onTouchEnd={pressCancel}
+                    onTouchMove={pressCancel}
+                    onTouchCancel={pressCancel}
+                    onContextMenu={e => { e.preventDefault(); openPicker(e.currentTarget, m, isMe) }}
+                    onDoubleClick={() => react(m.id, '💙')}
+                  >
+                    {!isMe && showWho && <span className="who">{m.sender}</span>}
+
+                    {quoted && (
+                      <div className="quote">
+                        <b>{quoted.sender}</b>
+                        <span>{quoted.kind === 'text' ? quoted.body?.slice(0, 80) : '📎 Хавсралт'}</span>
+                      </div>
+                    )}
+
+                    {m.kind === 'image' && (
+                      <a href={m.media_url} target="_blank" rel="noreferrer">
+                        <img src={m.media_url} alt="зураг" loading="lazy" draggable={false} />
+                      </a>
+                    )}
+                    {m.kind === 'video' && <video src={m.media_url} controls playsInline preload="metadata" />}
+                    {m.kind === 'voice' && <audio src={m.media_url} controls preload="metadata" className="voice-audio" />}
+                    {m.kind === 'text' && <span className="body">{m.body}</span>}
+
+                    <div className="m-meta">
+                      <time>{fmtTime(m.created_at)}</time>
+                      {isMe && (
+                        <span className={'tick' + (readCount > 0 ? ' read' : '')}>
+                          {readCount > 0 ? '✓✓' : '✓'}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {m.kind === 'image' && (
-                  <a href={m.media_url} target="_blank" rel="noreferrer">
-                    <img src={m.media_url} alt="зураг" loading="lazy" />
-                  </a>
-                )}
-                {m.kind === 'video' && <video src={m.media_url} controls playsInline preload="metadata" />}
-                {m.kind === 'voice' && (
-                  <audio src={m.media_url} controls preload="metadata" className="voice-audio" />
-                )}
-                {m.kind === 'text' && <span className="body">{m.body}</span>}
-
-                <div className="m-meta">
-                  <time>{fmtTime(m.created_at)}</time>
-                  {isMe && (
-                    <span className={'tick' + (readCount > 0 ? ' read' : '')}>
-                      {readCount > 0 ? '✓✓' : '✓'}
-                    </span>
-                  )}
+                  {/* Desktop hover товчнууд */}
+                  <div className="side-actions">
+                    <button
+                      type="button"
+                      className="side-btn"
+                      title="Reaction"
+                      aria-label="Reaction"
+                      onClick={e => openPicker(e.currentTarget.closest('.m-line').querySelector('.m'), m, isMe)}
+                    >😊</button>
+                    <button
+                      type="button"
+                      className="side-btn"
+                      title="Хариулах"
+                      aria-label="Хариулах"
+                      onClick={() => setReplyTo(m)}
+                    >↩</button>
+                  </div>
                 </div>
 
-                {Object.keys(grouped).length > 0 && (
-                  <div className="reactions">
+                {rxs.length > 0 && (
+                  <div className="rx-bar">
                     {Object.entries(grouped).map(([emoji, list]) => {
-                      const mine = list.some(r => r.user_id === session.user.id)
+                      const mine = myR?.emoji === emoji
                       return (
                         <button
+                          type="button"
                           key={emoji}
-                          className={'reaction' + (mine ? ' mine' : '')}
-                          onClick={() => toggleReaction(m.id, emoji)}
+                          className={'rx-pill' + (mine ? ' mine' : '')}
+                          onClick={() => react(m.id, emoji)}
                           title={list.map(r => r.sender).join(', ')}
-                        >{emoji} {list.length}</button>
+                        >
+                          <span className="rx-e">{emoji}</span>
+                          {list.length > 1 && <span className="rx-n">{list.length}</span>}
+                        </button>
                       )
                     })}
                   </div>
                 )}
-
-                <div className="m-actions">
-                  <button
-                    className="act-btn reply"
-                    onClick={() => setReplyTo(m)}
-                    title="Хариулах"
-                    aria-label="Хариулах"
-                  >↩</button>
-
-                  <button
-                    className="act-btn heart"
-                    onClick={() => toggleReaction(m.id, '💙')}
-                    title="Зүрх"
-                    aria-label="Зүрх"
-                  >💙</button>
-
-                  <div className="emoji-pop">
-                    {EMOJIS.filter(e => e !== '💙').map(e => (
-                      <button
-                        key={e}
-                        onClick={() => toggleReaction(m.id, e)}
-                        title={e}
-                      >{e}</button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
           )
@@ -557,7 +629,7 @@ export default function Home() {
         {recording ? (
           <div className="recording">
             <span className="rec-dot" />
-            <span className="rec-time">{String(Math.floor(recSec/60)).padStart(2,'0')}:{String(recSec%60).padStart(2,'0')}</span>
+            <span className="rec-time">{String(Math.floor(recSec / 60)).padStart(2, '0')}:{String(recSec % 60).padStart(2, '0')}</span>
             <button type="button" className="rec-cancel" onClick={() => stopRecording(false)}>✕</button>
             <button type="button" className="rec-send" onClick={() => stopRecording(true)}>➤</button>
           </div>
@@ -579,6 +651,30 @@ export default function Home() {
           </>
         )}
       </form>
+
+      {/* Messenger маягийн reaction popup */}
+      {picker && popMsg && (
+        <div
+          className={'rx-pop' + (picker.isMe ? ' me' : '') + (popBelow ? ' below' : '')}
+          style={{ ...popStyle, width: POP_W }}
+        >
+          <div className="rx-emojis">
+            {REACTS.map((e, idx) => (
+              <button
+                type="button"
+                key={e}
+                className={popMine?.emoji === e ? 'sel' : ''}
+                style={{ '--i': idx }}
+                onClick={() => react(popMsg.id, e)}
+                aria-label={e}
+              >{e}</button>
+            ))}
+          </div>
+          <div className="rx-menu">
+            <button type="button" onClick={() => { setReplyTo(popMsg); setPicker(null) }}>↩ Хариулах</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
