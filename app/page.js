@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -25,6 +25,41 @@ function urlBase64ToUint8Array(base64String) {
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const raw = atob(base64)
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+}
+
+/* --- SVG icons --- */
+const PATHS = {
+  chat: <path d="M21 12a8.5 8.5 0 0 1-12.4 7.5L3 21l1.5-5.4A8.5 8.5 0 1 1 21 12Z" />,
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  lock: <><rect x="4" y="10" width="16" height="11" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
+  bell: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></>,
+  bellOn: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /><path d="M2 8a10 10 0 0 1 2-5M22 8a10 10 0 0 0-2-5" /></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
+  clip: <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />,
+  smile: <><circle cx="12" cy="12" r="9.5" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><path d="M9 9h.01M15 9h.01" strokeWidth="3" /></>,
+  mic: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" /></>,
+  send: <path d="M4.5 12 3 4.2a.8.8 0 0 1 1.1-.9l16.5 8a.8.8 0 0 1 0 1.4l-16.5 8a.8.8 0 0 1-1.1-.9L4.5 12Zm0 0H12" />,
+  reply: <><path d="M9 17 4 12l5-5" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></>,
+  x: <path d="M18 6 6 18M6 6l12 12" />,
+  check: <path d="M20 6 9 17l-5-5" />,
+  checks: <path d="m2 12 5 5L18 6M13 15.5l1.5 1.5L22 7" />,
+  trash: <path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15" />,
+}
+
+function Icon({ name, ...rest }) {
+  return (
+    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...rest}>
+      {PATHS[name]}
+    </svg>
+  )
+}
+
+function dayLabel(d) {
+  const dt = new Date(d), n = new Date()
+  const y = new Date(n); y.setDate(n.getDate() - 1)
+  if (dt.toDateString() === n.toDateString()) return 'Өнөөдөр'
+  if (dt.toDateString() === y.toDateString()) return 'Өчигдөр'
+  return dt.getFullYear() + ' оны ' + (dt.getMonth() + 1) + '-р сарын ' + dt.getDate()
 }
 
 export default function Home() {
@@ -427,13 +462,8 @@ export default function Home() {
   }
 
   /* --- helpers --- */
-  const fmtTime = (d) => {
-    const dt = new Date(d), n = new Date()
-    if (dt.toDateString() === n.toDateString())
-      return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    return dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-      dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
+  // Огноо нь тусгаарлагч дээр харагдах тул энд зөвхөн цаг
+  const fmtTime = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
   const msgById = (id) => msgs.find(m => m.id === id)
   const typingNames = Object.keys(typing).filter(n => n !== me)
 
@@ -443,10 +473,17 @@ export default function Home() {
     return (
       <main className="join">
         <form className="card" onSubmit={login}>
+          <div className="logo"><Icon name="chat" /></div>
           <h1>Зөвхөн Ариунгэрэлд</h1>
           <p className="sub">Нэр болон нууц үгээрээ нэвтэрнэ үү</p>
-          <input type="text" value={uname} onChange={e => setUname(e.target.value)} placeholder="Нэр" maxLength={60} autoCapitalize="none" autoComplete="username" required />
-          <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Нууц үг" autoComplete="current-password" required />
+          <label className="field">
+            <Icon name="user" />
+            <input type="text" value={uname} onChange={e => setUname(e.target.value)} placeholder="Нэр" maxLength={60} autoCapitalize="none" autoComplete="username" required />
+          </label>
+          <label className="field">
+            <Icon name="lock" />
+            <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Нууц үг" autoComplete="current-password" required />
+          </label>
           <button disabled={!uname.trim() || !pw}>Нэвтрэх</button>
           <div className="err">{err}</div>
         </form>
@@ -483,9 +520,9 @@ export default function Home() {
           </div>
         </div>
         <div className="top-actions">
-          {!pushOn && <button className="icon-btn" onClick={enablePush} title="Мэдэгдэл асаах">🔔</button>}
-          {pushOn && <span className="push-on" title="Мэдэгдэл асаалттай">🔔</span>}
-          <button className="logout" onClick={() => sb.auth.signOut()}>Гарах</button>
+          {!pushOn && <button className="icon-btn" onClick={enablePush} title="Мэдэгдэл асаах" aria-label="Мэдэгдэл асаах"><Icon name="bell" /></button>}
+          {pushOn && <span className="push-on" title="Мэдэгдэл асаалттай"><Icon name="bellOn" /></span>}
+          <button className="logout" onClick={() => sb.auth.signOut()} title="Гарах" aria-label="Гарах"><Icon name="logout" /></button>
         </div>
       </header>
 
@@ -501,14 +538,19 @@ export default function Home() {
       >
         {msgs.length === 0 && (
           <div className="empty">
-            <div className="empty-icon">💭</div>
+            <div className="empty-icon"><Icon name="chat" /></div>
             <p>Одоогоор мессеж байхгүй</p>
             <span>Эхний мессежээ илгээгээрэй</span>
           </div>
         )}
         {msgs.map((m, i) => {
           const isMe = m.sender === me
-          const showWho = !isMe && (i === 0 || msgs[i - 1]?.sender !== m.sender)
+          const prev = msgs[i - 1]
+          const next = msgs[i + 1]
+          const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString()
+          const showWho = !isMe && (newDay || prev?.sender !== m.sender)
+          const lastOfGroup = !next || next.sender !== m.sender ||
+            new Date(next.created_at).toDateString() !== new Date(m.created_at).toDateString()
           const quoted = m.reply_to ? msgById(m.reply_to) : null
           const rxs = reactions[m.id] || []
           const grouped = rxs.reduce((acc, r) => {
@@ -521,9 +563,11 @@ export default function Home() {
           const myR = rxs.find(r => r.user_id === session.user.id)
 
           return (
-            <div key={m.id} className={'m-row' + (isMe ? ' me' : '') + (rxs.length ? ' has-rx' : '')}>
+            <Fragment key={m.id}>
+            {newDay && <div className="day">{dayLabel(m.created_at)}</div>}
+            <div className={'m-row' + (isMe ? ' me' : '') + (rxs.length ? ' has-rx' : '') + (newDay || prev?.sender !== m.sender ? ' first' : '')}>
               {!isMe && (
-                <div className="m-avatar">
+                <div className={'m-avatar' + (lastOfGroup ? '' : ' ghost')}>
                   {m.sender.charAt(0).toUpperCase()}
                   {isOnline && <span className="presence on" />}
                 </div>
@@ -575,8 +619,8 @@ export default function Home() {
                     <div className="m-meta">
                       <time>{fmtTime(m.created_at)}</time>
                       {isMe && (
-                        <span className={'tick' + (readCount > 0 ? ' read' : '')}>
-                          {readCount > 0 ? '✓✓' : '✓'}
+                        <span className={'tick' + (readCount > 0 ? ' read' : '')} title={readCount > 0 ? 'Уншсан' : 'Илгээсэн'}>
+                          <Icon name={readCount > 0 ? 'checks' : 'check'} />
                         </span>
                       )}
                     </div>
@@ -590,16 +634,16 @@ export default function Home() {
                       title="Reaction"
                       aria-label="Reaction"
                       onClick={e => openPicker(e.currentTarget.closest('.m-line').querySelector('.m'), m, isMe)}
-                    >😊</button>
+                    ><Icon name="smile" /></button>
                     <button
                       type="button"
                       className="side-btn"
                       title="Хариулах"
                       aria-label="Хариулах"
                       onClick={() => setReplyTo(m)}
-                    >↩</button>
+                    ><Icon name="reply" /></button>
                   </div>
-                </div>
+                </div>                        
 
                 {rxs.length > 0 && (
                   <div className="rx-bar">
@@ -622,6 +666,7 @@ export default function Home() {
                 )}
               </div>
             </div>
+            </Fragment>
           )
         })}
       </div>
@@ -635,59 +680,64 @@ export default function Home() {
 
       {(busy || err) && (
         <div className={'notice' + (err ? ' error' : '')}>
-          <span>{busy ? '📤 Илгээж байна…' : err}</span>
-          {err && !busy && <button className="notice-close" onClick={() => setErr('')} aria-label="Хаах">×</button>}
+          <span>{busy ? 'Илгээж байна…' : err}</span>
+          {err && !busy && <button className="notice-close" onClick={() => setErr('')} aria-label="Хаах"><Icon name="x" /></button>}
         </div>
       )}
 
-      {replyTo && (
-        <div className="reply-bar">
-          <div className="reply-info">
-            <b>{replyTo.sender}</b>
-            <span>{replyTo.kind === 'text' ? replyTo.body?.slice(0, 60) : '📎 Хавсралт'}</span>
+      <div className="composer">
+        {replyTo && (
+          <div className="reply-bar">
+            <Icon name="reply" />
+            <div className="reply-info">
+              <b>{replyTo.sender}</b>
+              <span>{replyTo.kind === 'text' ? replyTo.body?.slice(0, 60) : '📎 Хавсралт'}</span>
+            </div>
+            <button onClick={() => setReplyTo(null)} aria-label="Цуцлах"><Icon name="x" /></button>
           </div>
-          <button onClick={() => setReplyTo(null)} aria-label="Цуцлах">×</button>
-        </div>
-      )}
-
-      {showEmoji && (
-        <div className="emoji-picker">
-          {['😀','😂','🥰','😎','🤔','😢','😡','👍','👎','❤️','🔥','🎉','🙏','👏','💪','✨','🌸','🍕','⚽','🎵','📷','🎬','💬','✅','❌','⭐','🌙','☀️'].map(e => (
-            <button key={e} onClick={() => { setText(t => t + e); setShowEmoji(false) }}>{e}</button>
-          ))}
-        </div>
-      )}
-
-      <form className="bar" onSubmit={sendText}>
-        <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={sendFile} />
-        <button type="button" className="clip" disabled={busy || recording} onClick={() => fileRef.current.click()} aria-label="Хавсаргах">📎</button>
-        <button type="button" className="clip" disabled={busy || recording} onClick={() => setShowEmoji(s => !s)} aria-label="Emoji">😊</button>
-
-        {recording ? (
-          <div className="recording">
-            <span className="rec-dot" />
-            <span className="rec-time">{String(Math.floor(recSec / 60)).padStart(2, '0')}:{String(recSec % 60).padStart(2, '0')}</span>
-            <button type="button" className="rec-cancel" onClick={() => stopRecording(false)}>✕</button>
-            <button type="button" className="rec-send" onClick={() => stopRecording(true)}>➤</button>
-          </div>
-        ) : (
-          <>
-            <input
-              type="text"
-              value={text}
-              onChange={e => onTextChange(e.target.value)}
-              placeholder="Мессеж бичих…"
-              maxLength={2000}
-              autoComplete="off"
-            />
-            {text.trim() ? (
-              <button className="send" disabled={busy} aria-label="Илгээх">Илгээх</button>
-            ) : (
-              <button type="button" className="mic" onClick={startRecording} disabled={busy} aria-label="Дуу бичих">🎤</button>
-            )}
-          </>
         )}
-      </form>
+
+        {showEmoji && (
+          <div className="emoji-picker">
+            {['😀','😂','🥰','😎','🤔','😢','😡','👍','👎','❤️','💙','🔥','🎉','🙏','👏','💪','✨','🌸','🍕','⚽','🎵','📷','🎬','💬','✅','❌','⭐','🌙'].map(e => (
+              <button type="button" key={e} onClick={() => { setText(t => t + e); setShowEmoji(false) }}>{e}</button>
+            ))}
+          </div>
+        )}
+
+        <form className="bar" onSubmit={sendText}>
+          <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={sendFile} />
+          <button type="button" className="clip" disabled={busy || recording} onClick={() => fileRef.current.click()} aria-label="Хавсаргах" title="Зураг / видео"><Icon name="clip" /></button>
+
+          {recording ? (
+            <div className="recording">
+              <span className="rec-dot" />
+              <span className="rec-time">{String(Math.floor(recSec / 60)).padStart(2, '0')}:{String(recSec % 60).padStart(2, '0')}</span>
+              <button type="button" className="rec-cancel" onClick={() => stopRecording(false)} aria-label="Цуцлах"><Icon name="trash" /></button>
+              <button type="button" className="rec-send" onClick={() => stopRecording(true)} aria-label="Илгээх"><Icon name="send" /></button>
+            </div>
+          ) : (
+            <>
+              <div className="input-wrap">
+                <input
+                  type="text"
+                  value={text}
+                  onChange={e => onTextChange(e.target.value)}
+                  placeholder="Мессеж бичих…"
+                  maxLength={2000}
+                  autoComplete="off"
+                />
+                <button type="button" className={'emoji-btn' + (showEmoji ? ' on' : '')} disabled={busy} onClick={() => setShowEmoji(s => !s)} aria-label="Emoji"><Icon name="smile" /></button>
+              </div>
+              {text.trim() ? (
+                <button className="send" disabled={busy} aria-label="Илгээх"><Icon name="send" /></button>
+              ) : (
+                <button type="button" className="mic" onClick={startRecording} disabled={busy} aria-label="Дуу бичих"><Icon name="mic" /></button>
+              )}
+            </>
+          )}
+        </form>
+      </div>
 
       {/* Messenger маягийн reaction popup */}
       {picker && popMsg && (
@@ -708,7 +758,7 @@ export default function Home() {
             ))}
           </div>
           <div className="rx-menu">
-            <button type="button" onClick={() => { setReplyTo(popMsg); setPicker(null) }}>↩ Хариулах</button>
+            <button type="button" onClick={() => { setReplyTo(popMsg); setPicker(null) }}><Icon name="reply" /> Хариулах</button>
           </div>
         </div>
       )}

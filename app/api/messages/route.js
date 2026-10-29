@@ -23,7 +23,7 @@ export async function POST(req) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Push явуулах (fire-and-forget)
+  
   const origin = new URL(req.url).origin
   fetch(origin + '/api/push/send', {
     method: 'POST',
